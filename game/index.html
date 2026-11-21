@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Neon Harbor — Aurelia Bay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e1a;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: rgba(8, 12, 26, 0.62); border: 1px solid rgba(120, 220, 255, 0.25);
+    border-radius: 10px; backdrop-filter: blur(3px); }
+  /* top-left: health + cash */
+  #topleft { position: absolute; top: 14px; left: 14px; padding: 10px 14px; min-width: 230px; }
+  #health-row { display: flex; align-items: center; gap: 8px; }
+  #health-label { font-size: 12px; letter-spacing: 2px; color: #9fd8ff; font-weight: 700; }
+  #health-bar { flex: 1; height: 12px; background: rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37e08b, #a8f04a); border-radius: 6px; transition: width .2s; }
+  #health-fill.low { background: linear-gradient(90deg, #ff4d4d, #ff9a3d); }
+  #cash { margin-top: 6px; font-size: 22px; font-weight: 800; color: #7dff9e; text-shadow: 0 0 12px rgba(80,255,140,.5); }
+  #cash small { font-size: 12px; color: #bfe9c9; font-weight: 600; letter-spacing: 1px; }
+  /* top-center: mission banner */
+  #mission-banner { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    padding: 8px 22px; text-align: center; min-width: 340px; }
+  #mission-title { font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #ffd76a; text-transform: uppercase; }
+  #mission-objective { font-size: 13px; color: #e8f4ff; margin-top: 2px; }
+  #mission-timer { font-size: 13px; color: #ff8f8f; font-weight: 700; margin-top: 2px; }
+  /* top-right: wanted + weapon */
+  #topright { position: absolute; top: 14px; right: 14px; padding: 10px 14px; text-align: right; }
+  #stars { font-size: 26px; letter-spacing: 4px; color: #ffd23d; text-shadow: 0 0 10px rgba(255,210,61,.7); }
+  #stars .off { color: rgba(255,255,255,0.22); text-shadow: none; }
+  #weapon { margin-top: 4px; font-size: 14px; font-weight: 700; color: #e8f4ff; }
+  #weapon .ammo { color: #ffd76a; }
+  /* bottom-left: minimap */
+  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; padding: 8px; }
+  #minimap { display: block; border-radius: 6px; }
+  #minimap-label { font-size: 11px; letter-spacing: 2px; color: #9fd8ff; text-align: center; margin-top: 4px; font-weight: 700; }
+  /* bottom-right: speed */
+  #speedo { position: absolute; right: 14px; bottom: 14px; padding: 8px 18px; text-align: center; }
+  #speed-num { font-size: 34px; font-weight: 800; line-height: 1; color: #fff; }
+  #speed-unit { font-size: 11px; letter-spacing: 3px; color: #9fd8ff; font-weight: 700; }
+  /* crosshair + prompts */
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%,-50%); display: none; }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.9); }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
+  #prompt { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%);
+    padding: 8px 18px; font-size: 15px; font-weight: 700; display: none; }
+  #prompt b { color: #ffd76a; }
+  /* dialogue box */
+  #dialogue { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%);
+    width: min(620px, 86vw); padding: 14px 18px; display: none; }
+  #dialogue-name { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ff9ad5; text-transform: uppercase; }
+  #dialogue-text { font-size: 15px; line-height: 1.5; margin-top: 4px; color: #f2f7ff; }
+  #dialogue-hint { font-size: 11px; color: #9fb6cc; margin-top: 6px; text-align: right; }
+  /* damage vignette */
+  #damage { position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255,0,0,.55) 100%); transition: opacity .15s; }
+  /* toast */
+  #toast { position: absolute; left: 50%; top: 96px; transform: translateX(-50%);
+    padding: 8px 20px; font-size: 15px; font-weight: 700; display: none; color: #ffe9a8; }
+  /* overlays: start / pause / dead */
+  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, rgba(10,16,38,.88), rgba(40,10,60,.82)); }
+  .overlay.hidden { display: none; }
+  .menu-card { width: min(680px, 92vw); padding: 38px 44px; text-align: center;
+    background: rgba(10, 18, 40, 0.85); border: 1px solid rgba(255, 150, 220, 0.35); border-radius: 18px;
+    box-shadow: 0 0 60px rgba(255, 80, 200, 0.25), 0 0 120px rgba(60, 160, 255, 0.18); }
+  .menu-card h1 { font-size: 54px; font-weight: 900; letter-spacing: 6px;
+    background: linear-gradient(90deg, #ff5ec4, #ffb347, #4de3ff); -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; line-height: 1.05; }
+  .menu-card h2 { font-size: 16px; letter-spacing: 8px; color: #9fd8ff; font-weight: 700; margin-top: 6px; }
+  .menu-card p.blurb { margin: 18px auto 6px; font-size: 15px; line-height: 1.65; color: #dfeaff; max-width: 560px; text-align: left; }
+  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; text-align: left;
+    margin: 18px auto 6px; max-width: 520px; font-size: 13.5px; color: #cfe2f5; }
+  .controls-grid b { color: #ffd76a; display: inline-block; min-width: 108px; }
+  .menu-btn { pointer-events: auto; cursor: pointer; margin: 10px 6px 0; padding: 13px 34px; font-size: 17px;
+    font-weight: 800; letter-spacing: 2px; color: #081020; border: none; border-radius: 10px;
+    background: linear-gradient(90deg, #ff5ec4, #ffb347); box-shadow: 0 4px 22px rgba(255, 94, 196, .45); }
+  .menu-btn.secondary { background: linear-gradient(90deg, #4de3ff, #7dff9e); box-shadow: 0 4px 22px rgba(77, 227, 255, .35); }
+  .menu-btn:hover { filter: brightness(1.12); }
+  .menu-btn:disabled { opacity: .4; cursor: default; filter: grayscale(.5); }
+  .menu-note { margin-top: 14px; font-size: 12px; color: #8fa8c4; }
+  #wasted-title { font-size: 46px; color: #ff4d4d; letter-spacing: 6px; font-weight: 900; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="hud">
+  <div id="topleft" class="panel">
+    <div id="health-row"><span id="health-label">HEALTH</span><div id="health-bar"><div id="health-fill"></div></div></div>
+    <div id="cash"><small>CASH&nbsp;</small><span id="cash-num">$0</span></div>
+  </div>
+  <div id="mission-banner" class="panel">
+    <div id="mission-title">FREE ROAM</div>
+    <div id="mission-objective">Explore Aurelia Bay. Find Marisol to start work.</div>
+    <div id="mission-timer"></div>
+  </div>
+  <div id="topright" class="panel">
+    <div id="stars"></div>
+    <div id="weapon">REVOLVER &nbsp;<span class="ammo" id="ammo-num">6 / 24</span></div>
+  </div>
+  <div id="minimap-wrap" class="panel">
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="minimap-label">AURELIA BAY &nbsp;·&nbsp; N ↑</div>
+  </div>
+  <div id="speedo" class="panel">
+    <div id="speed-num">0</div>
+    <div id="speed-unit">KM/H</div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="prompt" class="panel"></div>
+  <div id="dialogue" class="panel">
+    <div id="dialogue-name"></div>
+    <div id="dialogue-text"></div>
+    <div id="dialogue-hint">click or press E to continue</div>
+  </div>
+  <div id="toast" class="panel"></div>
+</div>
+<div id="damage"></div>
+
+<div id="start-screen" class="overlay">
+  <div class="menu-card">
+    <h1>NEON HARBOR</h1>
+    <h2>A U R E L I A &nbsp; B A Y</h2>
+    <p class="blurb">Sun, salt air and bad decisions. You are <b>Reyes</b>, a wheelman fresh out of
+      the harbor lockup. <b>Marisol</b>, the fixer who runs the bay, has four jobs for you —
+      pickups, a hot car, a police chase and one last score. Steal what you need, lose the
+      heat when it finds you, and get paid. The city is yours; the consequences are too.</p>
+    <div class="controls-grid">
+      <div><b>W A S D</b> move / drive</div><div><b>Mouse drag</b> camera</div>
+      <div><b>Shift</b> sprint</div><div><b>E</b> enter / exit car · interact</div>
+      <div><b>Click</b> shoot revolver</div><div><b>R</b> reload &nbsp;·&nbsp; <b>Space</b> handbrake</div>
+      <div><b>Esc / P</b> pause</div><div><b>M</b> mute sound</div>
+    </div>
+    <button id="btn-new" class="menu-btn">NEW GAME</button>
+    <button id="btn-continue" class="menu-btn secondary">CONTINUE</button>
+    <div class="menu-note">An original game. Aurelia Bay, Reyes and Marisol are fictional — no names, places or
+      assets from any commercial game. Progress saves automatically to this browser.</div>
+  </div>
+</div>
+
+<div id="pause-screen" class="overlay hidden">
+  <div class="menu-card">
+    <h1 style="font-size:40px">PAUSED</h1>
+    <p class="blurb" style="text-align:center">The bay waits for no one — except right now.</p>
+    <button id="btn-resume" class="menu-btn">RESUME</button>
+    <button id="btn-quit" class="menu-btn secondary">SAVE &amp; QUIT TO MENU</button>
+  </div>
+</div>
+
+<div id="dead-screen" class="overlay hidden">
+  <div class="menu-card">
+    <div id="wasted-title">BUSTED</div>
+    <p class="blurb" style="text-align:center">Reyes wakes up in a harbor holding cell. Marisol posts bail — again.
+      You keep your cash, but the heat is gone and so is your ride.</p>
+    <button id="btn-retry" class="menu-btn">BACK ON THE STREETS</button>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
